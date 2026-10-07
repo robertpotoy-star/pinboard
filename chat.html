@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pinboard</title>
+<!--
+SETUP (5 min):
+1. console.firebase.google.com > Add project > Build > Authentication > enable Email/Password.
+2. Build > Firestore Database > Create (production mode).
+3. Firestore > Rules > paste the rules below > Publish.
+4. Project settings > Your apps > Web (</>) > copy the config into FIREBASE_CONFIG below.
+5. Authentication > Settings > Authorized domains: add the address you host this page on.
+
+RULES:
+rules_version = '2';
+service cloud.firestore { match /databases/{db}/documents {
+  match /users/{uid} {
+    allow read: if request.auth != null;
+    allow write: if request.auth.uid == uid;
+    match /posts/{id} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
+      allow update: if request.auth != null && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastCommentAt','lastCommentBy']);
+      allow delete: if request.auth.uid == uid || resource.data.authorId == request.auth.uid;
+      match /comments/{cid} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null && request.resource.data.authorId == request.auth.uid;
+        allow delete: if request.auth.uid == uid || resource.data.authorId == request.auth.uid;
+      }
+      match /reactions/{ruid} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == ruid;
+      }
+    }
+  }
+  match /chats/{chatId} {
+    allow read: if request.auth != null && request.auth.uid in resource.data.members;
+    allow write: if request.auth != null && request.auth.uid in request.resource.data.members;
+    match /messages/{id} {
+      allow read: if request.auth != null && request.auth.uid in chatId.split('_');
+      allow create: if request.auth != null && request.auth.uid in chatId.split('_') && request.resource.data.from == request.auth.uid;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.from;
+    }
+  }
+  match /mentions/{id} {
+    allow read: if request.auth != null && request.auth.uid == resource.data.to;
+    allow create: if request.auth != null && request.resource.data.from == request.auth.uid;
+  }
+  match /groups/{gid} {
+    allow read: if request.auth != null && request.auth.uid in resource.data.members;
+    allow create: if request.auth != null && request.auth.uid in request.resource.data.members;
+    allow update: if request.auth != null && request.auth.uid in resource.data.members;
+    match /messages/{id} {
+      allow read: if request.auth != null && request.auth.uid in get(/databases/$(db)/documents/groups/$(gid)).data.members;
+      allow create: if request.auth != null && request.auth.uid in get(/databases/$(db)/documents/groups/$(gid)).data.members && request.resource.data.from == request.auth.uid;
+      allow delete: if request.auth != null && request.auth.uid == resource.data.from;
+    }
+  }
+}}
+-->
+<style>
+:root{--bg:#ffffff;--panel:#f2f3f5;--panel2:#e3e5e8;--ink:#060607;--mute:#5c5e66;--acc:#5865f2;--acc-h:#4752c4;--line:#e3e5e8}
+@media(prefers-color-scheme:dark){:root{--bg:#313338;--panel:#2b2d31;--panel2:#1e1f22;--ink:#f2f3f5;--mute:#949ba4;--acc:#5865f2;--acc-h:#4752c4;--line:#1e1f22}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.5 -apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+h1,h2,h3{font-weight:700;margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid transparent;border-radius:8px;background:var(--panel2);margin:0 0 8px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
+button{cursor:pointer;border:0;border-radius:8px;padding:9px 16px;background:var(--acc);color:#fff;font-weight:500}
+button:hover{background:var(--acc-h)}
+button.q{background:transparent;color:var(--acc);padding:4px 8px;font-weight:500;border-radius:4px}
+button.q:hover{background:var(--panel2);color:var(--acc-h)}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--panel2);border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
+#auth{max-width:340px;margin:12vh auto;padding:28px;background:var(--panel);border-radius:8px}
+#auth h1{margin-bottom:16px;color:var(--acc);letter-spacing:-.02em}
+#app{display:none;min-height:100vh;grid-template-columns:240px 1fr;grid-template-rows:auto 1fr}
+header{grid-column:1/3;display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:var(--panel2);border-bottom:1px solid var(--line)}
+header h1{color:var(--acc);letter-spacing:-.02em;font-size:20px}
+aside{padding:12px;background:var(--panel);overflow:auto}
+.srow{display:flex;align-items:center;gap:2px;margin-bottom:2px}
+.srow button:first-child{flex:1;display:flex;align-items:center;gap:10px;text-align:left;background:none;color:var(--mute);padding:8px 10px;overflow:hidden;border-radius:4px;font-weight:500}
+.srow button:first-child:hover{background:var(--panel2);color:var(--ink)}
+.srow button:first-child span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow button.on{background:var(--panel2);color:var(--ink)}
+.srow .q{padding:6px 8px;flex:none;border-radius:4px}
+main{padding:24px;max-width:960px;width:100%}
+.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.whoami{display:flex;align-items:center;gap:12px}
+.ava{border-radius:50%;object-fit:cover;flex:none;display:block}
+.ava.ph{display:flex;align-items:center;justify-content:center;background:var(--acc);color:#fff;font-weight:600}
+.prow{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.comments{margin-top:8px;padding-left:14px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.comment{font-size:14px}
+.comment .m{color:var(--mute);font-weight:600}
+.m{color:var(--mute);font-size:13px}
+.cform{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-top:8px}
+.cform input{margin-bottom:0}
+.dot{position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:#f23f42;border:2px solid var(--panel)}
+.dot-inline{display:inline-block;width:8px;height:8px;border-radius:50%;background:#f23f42;flex:none}
+.card{background:var(--panel);border-radius:8px;padding:16px;margin-bottom:12px}
+summary{cursor:pointer;color:var(--acc);font-weight:500}details.card{margin-bottom:12px}details[open] summary{margin-bottom:10px}
+.post p{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.post img{max-width:600px;max-height:600px;object-fit:cover;border-radius:8px;margin:6px 0;display:block}
+#msgs{height:60vh;overflow:auto;display:flex;flex-direction:column;padding:8px 4px;margin-bottom:10px}
+.msg{display:flex;gap:14px;padding:6px 10px;border-radius:6px}
+.msg:hover{background:var(--panel2)}
+.msg .ava{margin-top:2px}
+.mbody{min-width:0;flex:1}
+.mhead{display:flex;align-items:baseline;gap:8px}
+.mname{font-weight:600;color:var(--ink)}
+.mbody p{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.mbody img{max-width:300px;max-height:300px;object-fit:cover;border-radius:8px;margin-top:4px;display:block}
+.err{color:#f23f42;min-height:1.4em;font-size:13px}
+.empty{color:var(--mute)}
+.mention{background:rgba(88,101,242,.15);color:var(--acc);border-radius:4px;padding:0 2px;font-weight:600}
+.mention-wrap{position:relative;width:100%}
+.mention-menu{position:absolute;left:0;right:0;top:100%;background:var(--panel);border-radius:8px;margin-top:2px;z-index:20;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+.mention-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;color:var(--ink);padding:7px 10px;border-radius:0;font-weight:500}
+.mention-menu button:hover{background:var(--panel2)}
+.reactions{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 0}
+.reactions button{background:var(--panel2);color:var(--ink);padding:4px 10px;border-radius:12px;font-size:13px;font-weight:500}
+.reactions button:hover{background:var(--acc-h);color:#fff}
+.reactions button.mine{background:var(--acc);color:#fff}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal{background:var(--panel);padding:20px;border-radius:8px;max-width:320px;width:100%;max-height:80vh;overflow:auto}
+.modal h3{margin-bottom:12px}
+@media(max-width:700px){#app{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}header{grid-column:1}aside{display:flex;gap:6px;overflow-x:auto;background:var(--panel);border-bottom:1px solid var(--line)}.srow{flex:none;margin-bottom:0}.srow button:first-child span{max-width:80px}}
+</style></head>
+<body>
+<form id="auth"><h1>Pinboard</h1><input id="nm" placeholder="Display name" hidden><input id="em" type="email" placeholder="Email" required><input id="pw" type="password" placeholder="Password (6+ characters)" required minlength="6"><div class="err" id="err"></div><button>Sign in</button> <button type="button" class="q" id="sw">Create an account</button></form>
+<div id="app"><header><h1>Pinboard</h1><button class="q" id="out">Sign out</button></header><aside id="side"></aside><main id="main"></main></div>
+
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,updateProfile} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getFirestore,collection,doc,setDoc,addDoc,deleteDoc,updateDoc,onSnapshot,query,where,orderBy,limit,serverTimestamp,arrayUnion,arrayRemove} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyB6Eu1_oS_WL_yqGHpMOKOQ9lOgvHKcL3U", authDomain: "dhsocial.firebaseapp.com", projectId: "dhsocial",
+  storageBucket: "dhsocial.firebasestorage.app", messagingSenderId: "306042526871", appId: "1:306042526871:web:1b898c50f822a0c1d19dd2"
+};
+const app = initializeApp(FIREBASE_CONFIG), auth = getAuth(app), db = getFirestore(app);
+const $ = id => document.getElementById(id);
+const h = (t, p = {}, ...k) => { const e = document.createElement(t);
+  for (const [a, v] of Object.entries(p)) a.startsWith("on") ? e.addEventListener(a.slice(2), v) : a === "class" ? e.className = v : a in e ? e[a] = v : e.setAttribute(a, v);
+  e.append(...k.flat().filter(x => x != null && x !== false)); return e; };
+const safe = u => /^https?:\/\//i.test(u) ? u : "#";
+const when = t => t?.toDate ? t.toDate().toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "sending…";
+const initials = n => (n || "?").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+const avatar = (u, size = 28) => (u?.photoURL && /^https?:\/\//i.test(u.photoURL))
+  ? h("img", {src: u.photoURL, alt: "", class: "ava", style: `width:${size}px;height:${size}px`})
+  : h("div", {class: "ava ph", style: `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.4)}px`}, initials(u?.name));
+const withDot = (el, show) => show ? h("span", {style: "position:relative;display:inline-flex"}, el, h("span", {class: "dot"})) : el;
+const ts = t => t?.toMillis ? t.toMillis() : 0;
+const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// A text input/textarea that pops up a user-picker when you type @, and tracks who was tagged.
+function mentionField(tag, props) {
+  const el = h(tag, props);
+  const menu = h("div", {class: "mention-menu", style: "display:none"});
+  const mentions = new Set();
+  const token = () => {
+    const v = el.value, pos = el.selectionStart ?? v.length, upTo = v.slice(0, pos);
+    const m = upTo.match(/@([^\s@]*)$/);
+    return m ? {start: pos - m[0].length, query: m[1].toLowerCase()} : null;
+  };
+  const close = () => { menu.replaceChildren(); menu.style.display = "none"; };
+  const refresh = () => {
+    const tok = token();
+    if (!tok) return close();
+    const matches = Object.entries(users).filter(([id, u]) => id !== me.uid && u.name.toLowerCase().includes(tok.query)).slice(0, 5);
+    if (!matches.length) return close();
+    menu.replaceChildren(...matches.map(([id, u]) => h("button", {type: "button", onmousedown: e => {
+      e.preventDefault();
+      const v = el.value, pos = el.selectionStart ?? v.length;
+      const insert = "@" + u.name + " ";
+      el.value = v.slice(0, tok.start) + insert + v.slice(pos);
+      mentions.add(id);
+      const newPos = tok.start + insert.length; el.focus(); el.setSelectionRange(newPos, newPos);
+      close(); }}, avatar(u, 18), u.name)));
+    menu.style.display = "block";
+  };
+  el.addEventListener("input", refresh);
+  el.addEventListener("blur", () => setTimeout(close, 150));
+  const wrap = h("div", {class: "mention-wrap"}, el, menu);
+  return {wrap, el, mentions, reset: () => { el.value = ""; mentions.clear(); close(); }};
+}
+// Catch mentions typed by hand (not via the dropdown) by matching @Name against known users.
+function resolveMentions(text, explicitIds) {
+  const out = new Set(explicitIds);
+  for (const [id, u] of Object.entries(users)) {
+    if (id === me.uid || !u.name) continue;
+    if (new RegExp("@" + esc(u.name) + "\\b").test(text)) out.add(id);
+  }
+  return [...out];
+}
+// Render text with @Name mentions highlighted.
+function renderText(text, tag = "p") {
+  const names = Object.values(users).map(u => u.name).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (!names.length) return h(tag, {}, text);
+  const re = new RegExp("@(" + names.map(esc).join("|") + ")\\b", "g");
+  const p = h(tag, {});
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) p.append(text.slice(last, m.index));
+    p.append(h("span", {class: "mention"}, "@" + m[1]));
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) p.append(text.slice(last));
+  return p;
+}
+async function notifyMentions(ids, context, text) {
+  for (const uid of ids) { if (uid === me.uid) continue;
+    addDoc(collection(db, "mentions"), {to: uid, from: me.uid, fromName: users[me.uid]?.name || me.name,
+      context, preview: text.slice(0, 80), createdAt: serverTimestamp()}).catch(() => {}); }
+}
+// Patches a rendered list in place using Firestore's docChanges(), instead of tearing the whole
+// list down and rebuilding it on every update — this is what stops the flicker on new posts/messages.
+// `skipFields`, if given, skips re-rendering a "modified" doc entirely when none of those fields changed
+// (used so an unrelated metadata update, like a comment-count ping, doesn't redraw the whole post).
+function syncList(container, snapshot, elMap, renderFn, emptyMsg, skipFields) {
+  if (snapshot.size && container.children.length === 1 && container.firstChild.classList?.contains("empty")) container.firstChild.remove();
+  for (const change of snapshot.docChanges()) {
+    const id = change.doc.id, old = elMap.get(id);
+    if (change.type === "removed") { old?.remove(); elMap.delete(id); continue; }
+    const data = change.doc.data();
+    if (change.type === "modified" && skipFields && old && skipFields.every(k => old._data[k] === data[k])) { old._data = data; continue; }
+    const fresh = renderFn(change.doc); fresh._data = data;
+    if (old) old.replaceWith(fresh);
+    elMap.set(id, fresh);
+  }
+  let prev = null;
+  for (const d of snapshot.docs) { const el = elMap.get(d.id); if (!el) continue;
+    if (prev ? prev.nextSibling !== el : container.firstChild !== el) container.insertBefore(el, prev ? prev.nextSibling : container.firstChild);
+    prev = el; }
+  if (emptyMsg && !snapshot.size) container.replaceChildren(h("p", {class: "empty"}, emptyMsg));
+}
+
+let me, users = {}, groups = {}, chats = {}, myPosts = {}, myMentions = [], unsubs = [], signup = false, curId = null, curKind = "wall", lastMarkedRead = null;
+const listen = (...a) => unsubs.push(onSnapshot(...a));
+const clear = () => { unsubs.forEach(u => u()); unsubs = []; };
+// Marks something read exactly once per genuine visit (not on background repaints), keyed by
+// what was visited. Being idempotent per key is also what keeps this from ever looping (see the
+// "page freezes" bug history): a write here can only ever re-trigger this exact same key once.
+function markReadOnce(key, patch) {
+  if (lastMarkedRead === key) return;
+  lastMarkedRead = key;
+  updateDoc(doc(db, "users", me.uid), patch).catch(() => {});
+}
+function hasUnreadChat(otherUid) {
+  const c = chats[[me.uid, otherUid].sort().join("_")];
+  if (!c || !c.lastAt || c.lastFrom === me.uid) return false;
+  return ts(c.lastAt) > ts(users[me.uid]?.reads?.["chat:" + [me.uid, otherUid].sort().join("_")]);
+}
+function hasUnreadGroup(gid) {
+  const g = groups[gid];
+  if (!g || !g.lastAt || g.lastFrom === me.uid) return false;
+  return ts(g.lastAt) > ts(users[me.uid]?.reads?.["group:" + gid]);
+}
+function hasUnreadComments() {
+  const read = ts(users[me.uid]?.reads?.comments);
+  return Object.values(myPosts).some(p => p.lastCommentBy && p.lastCommentBy !== me.uid && ts(p.lastCommentAt) > read);
+}
+function hasUnreadMentions() {
+  const read = ts(users[me.uid]?.reads?.mentions);
+  return myMentions.some(m => ts(m.createdAt) > read);
+}
+
+// ---------- Auth ----------
+$("sw").onclick = () => { signup = !signup; $("nm").hidden = !signup; $("nm").required = signup;
+  $("auth").querySelector("button").textContent = signup ? "Create account" : "Sign in";
+  $("sw").textContent = signup ? "I have an account" : "Create an account"; };
+$("auth").onsubmit = async e => { e.preventDefault(); $("err").textContent = "";
+  try {
+    if (signup) { const c = await createUserWithEmailAndPassword(auth, $("em").value, $("pw").value);
+      const name = $("nm").value.trim(); await updateProfile(c.user, {displayName: name});
+      await setDoc(doc(db, "users", c.user.uid), {name, createdAt: serverTimestamp()}); }
+    else await signInWithEmailAndPassword(auth, $("em").value, $("pw").value);
+  } catch (x) { $("err").textContent = x.code.replace("auth/", "").replaceAll("-", " "); } };
+$("out").onclick = () => signOut(auth);
+
+let usersUnsub = null, groupsUnsub = null, chatsUnsub = null, myPostsUnsub = null, mentionsUnsub = null;
+const repaint = () => { if (!curId) return;
+  if (curKind === "chat") chat(curId); else if (curKind === "group") groupChat(curId); else wall(curId, true); };
+onAuthStateChanged(auth, u => {
+  clear();
+  [usersUnsub, groupsUnsub, chatsUnsub, myPostsUnsub, mentionsUnsub].forEach(f => f && f());
+  usersUnsub = groupsUnsub = chatsUnsub = myPostsUnsub = mentionsUnsub = null;
+  lastMarkedRead = null; curId = null;
+  $("auth").style.display = u ? "none" : "block"; $("app").style.display = u ? "grid" : "none";
+  if (!u) return;
+  me = {uid: u.uid, name: u.displayName || u.email.split("@")[0]};
+  usersUnsub = onSnapshot(collection(db, "users"), s => { users = {}; s.docs.forEach(d => users[d.id] = d.data()); side(); repaint(); });
+  groupsUnsub = onSnapshot(query(collection(db, "groups"), where("members", "array-contains", u.uid)), s => {
+    groups = {}; s.docs.forEach(d => groups[d.id] = d.data()); side(); repaint(); });
+  chatsUnsub = onSnapshot(query(collection(db, "chats"), where("members", "array-contains", u.uid)), s => {
+    chats = {}; s.docs.forEach(d => chats[d.id] = d.data()); side(); });
+  myPostsUnsub = onSnapshot(collection(db, "users", u.uid, "posts"), s => {
+    myPosts = {}; s.docs.forEach(d => myPosts[d.id] = d.data()); side(); });
+  mentionsUnsub = onSnapshot(query(collection(db, "mentions"), where("to", "==", u.uid)), s => {
+    myMentions = s.docs.map(d => d.data()); side(); });
+  wall(me.uid, true);
+});
+
+// ---------- Sidebar ----------
+let cur = "";
+function side(active = cur) { cur = active;
+  const groupRows = Object.entries(groups).sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([id, g]) =>
+    h("div", {class: "srow"}, h("button", {class: id === active ? "on" : "", onclick: () => groupChat(id)},
+      hasUnreadGroup(id) && h("span", {class: "dot-inline"}), "👥 " + g.name)));
+  $("side").replaceChildren(
+    ...Object.entries(users).sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([id, u]) =>
+      h("div", {class: "srow"},
+        h("button", {class: id === active ? "on" : "", onclick: () => wall(id)},
+          withDot(avatar(u, 22), id === me.uid ? (hasUnreadComments() || hasUnreadMentions()) : hasUnreadChat(id)), h("span", {}, u.name)),
+        id !== me.uid && h("button", {class: "q", title: "Message " + u.name, onclick: () => chat(id)}, "💬"))),
+    h("div", {style: "display:flex;justify-content:space-between;align-items:center;padding:10px 4px 2px"},
+      h("span", {class: "m"}, "Groups"), h("button", {class: "q", title: "New group", onclick: openNewGroupModal}, "+")),
+    ...groupRows);
+}
+
+// ---------- Wall ----------
+function profileForm() {
+  const nmI = h("input", {value: users[me.uid]?.name || me.name, placeholder: "Display name"}),
+    avI = h("input", {value: users[me.uid]?.photoURL || "", placeholder: "Profile picture URL (optional)"}),
+    msg = h("div", {class: "err"});
+  return h("details", {class: "card"}, h("summary", {}, "Edit profile"), nmI, avI, msg,
+    h("button", {onclick: async () => {
+      const name = nmI.value.trim(); if (!name) { msg.textContent = "Enter a name."; return; }
+      const photoURL = avI.value.trim();
+      if (photoURL && !/^https?:\/\//i.test(photoURL)) { msg.textContent = "Picture must be a URL starting with http(s)://"; return; }
+      await updateProfile(auth.currentUser, {displayName: name});
+      await setDoc(doc(db, "users", me.uid), {name, photoURL}, {merge: true});
+      me.name = name; msg.textContent = "Saved."; }}, "Save profile"));
+}
+function openNewGroupModal() {
+  const others = Object.entries(users).filter(([id]) => id !== me.uid).sort((a, b) => a[1].name.localeCompare(b[1].name));
+  const gName = h("input", {placeholder: "Group name"}), gErr = h("div", {class: "err"});
+  const checks = others.map(([id, u]) => { const cb = h("input", {type: "checkbox", value: id});
+    return {id, cb, row: h("label", {style: "display:flex;align-items:center;gap:8px;padding:4px 0"}, cb, avatar(u, 20), h("span", {}, u.name))}; });
+  const backdrop = h("div", {class: "modal-backdrop", onclick: e => { if (e.target === backdrop) backdrop.remove(); }},
+    h("div", {class: "modal"}, h("h3", {}, "New group"),
+      others.length ? h("div", {}, gName, ...checks.map(c => c.row), gErr,
+        h("div", {style: "display:flex;gap:8px;margin-top:10px"},
+          h("button", {onclick: async () => {
+            const name = gName.value.trim(); if (!name) { gErr.textContent = "Enter a group name."; return; }
+            const members = checks.filter(c => c.cb.checked).map(c => c.id);
+            if (!members.length) { gErr.textContent = "Pick at least one person."; return; }
+            members.push(me.uid);
+            const ref = await addDoc(collection(db, "groups"), {name, members, createdBy: me.uid, createdAt: serverTimestamp()});
+            backdrop.remove(); groupChat(ref.id); }}, "Create"),
+          h("button", {class: "q", onclick: () => backdrop.remove()}, "Cancel")))
+        : h("p", {class: "empty"}, "No one else has signed up yet. Once a second account exists, you can start a group.")));
+  document.body.appendChild(backdrop);
+}
+function wall(uid, silent) {
+  curId = uid; curKind = "wall";
+  clear(); side(uid);
+  const mine = uid === me.uid, u = users[uid] || {name: "…"};
+  if (mine && !silent) markReadOnce("wall:" + uid, {"reads.comments": serverTimestamp(), "reads.mentions": serverTimestamp()});
+  const posts = h("div");
+  const txtField = mentionField("textarea", {rows: 2, placeholder: mine ? "Post on your wall (type @ to mention someone)" : `Write on ${u.name}'s wall`});
+  const img = h("input", {placeholder: "Picture link (optional) — paste an image URL"});
+  const perr = h("div", {class: "err"});
+  main.replaceChildren(
+    h("div", {class: "head"}, h("div", {class: "whoami"}, avatar(u, 40), h("h2", {}, u.name)), !mine && h("button", {onclick: () => chat(uid)}, "Message")),
+    mine && profileForm(),
+    h("div", {class: "card"}, txtField.wrap, img, perr, h("button", {onclick: async () => {
+      const text = txtField.el.value.trim(), imageUrl = img.value.trim();
+      if (!text && !imageUrl) { perr.textContent = "Write something or add a picture link."; return; }
+      if (imageUrl && !/^https?:\/\//i.test(imageUrl)) { perr.textContent = "Picture link must start with http(s)://"; return; }
+      const mentions = resolveMentions(text, txtField.mentions);
+      await addDoc(collection(db, "users", uid, "posts"), {text, imageUrl, mentions, authorId: me.uid, authorName: users[me.uid]?.name || me.name, createdAt: serverTimestamp()});
+      notifyMentions(mentions, "post", text);
+      txtField.reset(); img.value = ""; perr.textContent = ""; }}, "Post")),
+    posts);
+  const commentUnsubs = new Map(), reactionUnsubs = new Map(), postEls = new Map();
+  const EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🎉"];
+  function renderPost(d) {
+    const x = d.data(), list = h("div", {class: "comments"}), rbar = h("div", {class: "reactions"});
+    const commentEls = new Map();
+    const cinpField = mentionField("input", {placeholder: "Write a comment (@ to mention)", autocomplete: "off"});
+    const cimg = h("input", {placeholder: "Picture link (optional)"});
+    const cerr = h("div", {class: "err"});
+    function renderComment(cd) {
+      const c = cd.data();
+      return h("div", {class: "comment"}, h("span", {class: "m"}, c.authorName + ": "),
+        c.text && renderText(c.text, "span"),
+        c.imageUrl && h("img", {src: safe(c.imageUrl), alt: "", loading: "lazy", style: "max-width:200px;max-height:200px;object-fit:cover;border-radius:6px;display:block;margin-top:4px"}),
+        (mine || c.authorId === me.uid) && h("button", {class: "q", onclick: () => deleteDoc(cd.ref)}, "×"));
+    }
+    const reply = async e => { e.preventDefault();
+      const text = cinpField.el.value.trim(), imageUrl = cimg.value.trim();
+      if (!text && !imageUrl) { cerr.textContent = "Write something or add a picture link."; return; }
+      if (imageUrl && !/^https?:\/\//i.test(imageUrl)) { cerr.textContent = "Picture link must start with http(s)://"; return; }
+      const mentions = resolveMentions(text, cinpField.mentions);
+      cinpField.reset(); cimg.value = ""; cerr.textContent = "";
+      await addDoc(collection(db, "users", uid, "posts", d.id, "comments"),
+        {text, imageUrl, mentions, authorId: me.uid, authorName: users[me.uid]?.name || me.name, createdAt: serverTimestamp()});
+      notifyMentions(mentions, "comment", text);
+      updateDoc(doc(db, "users", uid, "posts", d.id), {lastCommentAt: serverTimestamp(), lastCommentBy: me.uid}).catch(() => {}); };
+    const csub = onSnapshot(query(collection(db, "users", uid, "posts", d.id, "comments"), orderBy("createdAt")), cs => {
+      syncList(list, cs, commentEls, renderComment, null, null); });
+    commentUnsubs.set(d.id, csub); unsubs.push(csub);
+    let myEmoji = null;
+    const react = async e => { const ref = doc(db, "users", uid, "posts", d.id, "reactions", me.uid);
+      await (myEmoji === e ? deleteDoc(ref) : setDoc(ref, {emoji: e})); };
+    const rsub = onSnapshot(collection(db, "users", uid, "posts", d.id, "reactions"), rs => {
+      const counts = {}; myEmoji = null;
+      rs.docs.forEach(rd => { const r = rd.data(); counts[r.emoji] = (counts[r.emoji] || 0) + 1; if (rd.id === me.uid) myEmoji = r.emoji; });
+      rbar.replaceChildren(...EMOJIS.map(e => h("button", {class: myEmoji === e ? "mine" : "", onclick: () => react(e)}, counts[e] ? `${e} ${counts[e]}` : e))); });
+    reactionUnsubs.set(d.id, rsub); unsubs.push(rsub);
+    return h("div", {class: "card post"},
+      h("div", {class: "prow"}, avatar(users[x.authorId], 22), h("span", {class: "m"}, `${x.authorName} · ${when(x.createdAt)}`)),
+      x.imageUrl && h("img", {src: safe(x.imageUrl), alt: "", loading: "lazy"}),
+      x.text && renderText(x.text),
+      (mine || x.authorId === me.uid) && h("button", {class: "q", onclick: () => deleteDoc(d.ref)}, "Delete"),
+      rbar,
+      list, h("form", {class: "cform", onsubmit: reply}, cinpField.wrap, cimg, cerr, h("button", {class: "q"}, "Reply")));
+  }
+  listen(query(collection(db, "users", uid, "posts"), orderBy("createdAt", "desc"), limit(100)), s => {
+    for (const change of s.docChanges()) { if (change.type === "removed") {
+      commentUnsubs.get(change.doc.id)?.(); commentUnsubs.delete(change.doc.id);
+      reactionUnsubs.get(change.doc.id)?.(); reactionUnsubs.delete(change.doc.id); } }
+    syncList(posts, s, postEls, renderPost, "No posts yet.", ["text", "imageUrl", "authorId", "authorName"]);
+  });
+}
+
+// ---------- Chat ----------
+function chat(uid) {
+  curId = uid; curKind = "chat";
+  clear(); side(uid);
+  const id = [me.uid, uid].sort().join("_"), box = h("div", {id: "msgs"});
+  markReadOnce("chat:" + id, {[`reads.chat:${id}`]: serverTimestamp()});
+  const inpField = mentionField("input", {placeholder: "Write a message (@ to mention)", autocomplete: "off"});
+  const img = h("input", {placeholder: "Picture link (optional)"});
+  const merr = h("div", {class: "err"});
+  const send = async e => { e.preventDefault();
+    const text = inpField.el.value.trim(), imageUrl = img.value.trim();
+    if (!text && !imageUrl) { merr.textContent = "Write something or add a picture link."; return; }
+    if (imageUrl && !/^https?:\/\//i.test(imageUrl)) { merr.textContent = "Picture link must start with http(s)://"; return; }
+    const mentions = resolveMentions(text, inpField.mentions);
+    inpField.reset(); img.value = ""; merr.textContent = "";
+    await addDoc(collection(db, "chats", id, "messages"), {text, imageUrl, mentions, from: me.uid, createdAt: serverTimestamp()});
+    notifyMentions(mentions, "chat", text);
+    setDoc(doc(db, "chats", id), {members: [me.uid, uid], lastAt: serverTimestamp(), lastFrom: me.uid}, {merge: true}); };
+  main.replaceChildren(
+    h("div", {class: "head"}, h("h2", {}, "Chat with " + (users[uid]?.name || "…")), h("button", {class: "q", onclick: () => wall(uid)}, "View wall")),
+    box, h("form", {onsubmit: send, class: "cform"}, inpField.wrap, img, merr, h("button", {}, "Send")));
+  const msgEls = new Map();
+  function renderMsg(d) {
+    const x = d.data(); const sender = users[x.from] || (x.from === me.uid ? {name: me.name} : {name: "…"});
+    return h("div", {class: "msg"}, avatar(sender, 32),
+      h("div", {class: "mbody"}, h("div", {class: "mhead"}, h("span", {class: "mname"}, sender.name), h("span", {class: "m"}, when(x.createdAt)),
+          x.from === me.uid && h("button", {class: "q", style: "margin-left:auto", onclick: () => deleteDoc(d.ref)}, "Delete")),
+        x.text && renderText(x.text),
+        x.imageUrl && h("img", {src: safe(x.imageUrl), alt: "", loading: "lazy"})));
+  }
+  listen(query(collection(db, "chats", id, "messages"), orderBy("createdAt"), limit(200)), s => {
+    syncList(box, s, msgEls, renderMsg, "No messages yet. Say hello.", null);
+    box.scrollTop = box.scrollHeight; });
+}
+const main = $("main");
+// ---------- Group chat ----------
+function groupChat(gid) {
+  curId = gid; curKind = "group";
+  clear(); side(gid);
+  markReadOnce("group:" + gid, {[`reads.group:${gid}`]: serverTimestamp()});
+  const g = groups[gid] || {name: "Group", members: []};
+  const memberNames = (g.members || []).map(id => users[id]?.name || "…").join(", ");
+  const box = h("div", {id: "msgs"});
+  const inpField = mentionField("input", {placeholder: "Message the group (@ to mention)", autocomplete: "off"});
+  const img = h("input", {placeholder: "Picture link (optional)"});
+  const merr = h("div", {class: "err"});
+  const send = async e => { e.preventDefault();
+    const text = inpField.el.value.trim(), imageUrl = img.value.trim();
+    if (!text && !imageUrl) { merr.textContent = "Write something or add a picture link."; return; }
+    if (imageUrl && !/^https?:\/\//i.test(imageUrl)) { merr.textContent = "Picture link must start with http(s)://"; return; }
+    const mentions = resolveMentions(text, inpField.mentions);
+    inpField.reset(); img.value = ""; merr.textContent = "";
+    await addDoc(collection(db, "groups", gid, "messages"), {text, imageUrl, mentions, from: me.uid, authorName: users[me.uid]?.name || me.name, createdAt: serverTimestamp()});
+    notifyMentions(mentions, "group", text);
+    updateDoc(doc(db, "groups", gid), {lastAt: serverTimestamp(), lastFrom: me.uid}); };
+  const addSel = h("select", {style: "width:auto"}, h("option", {value: ""}, "+ Add someone"),
+    ...Object.entries(users).filter(([id]) => !(g.members || []).includes(id)).map(([id, u]) => h("option", {value: id}, u.name)));
+  addSel.onchange = async () => { if (!addSel.value) return;
+    await updateDoc(doc(db, "groups", gid), {members: arrayUnion(addSel.value)}); addSel.value = ""; };
+  const leave = h("button", {class: "q", onclick: async () => { if (!confirm("Leave this group?")) return;
+    await updateDoc(doc(db, "groups", gid), {members: arrayRemove(me.uid)}); wall(me.uid); }}, "Leave");
+  const nameEl = h("h2", {}, g.name);
+  const renameBtn = h("button", {class: "q", title: "Rename group", onclick: () => {
+    const rnInp = h("input", {value: g.name, style: "width:auto;display:inline-block"});
+    const save = h("button", {class: "q", onclick: async () => { const name = rnInp.value.trim(); if (name) await updateDoc(doc(db, "groups", gid), {name}); }}, "Save");
+    nameEl.replaceWith(rnInp); renameBtn.replaceWith(save); rnInp.focus(); }}, "✏️");
+  main.replaceChildren(
+    h("div", {class: "head"}, h("div", {}, h("div", {style: "display:flex;align-items:center;gap:6px"}, nameEl, renameBtn), h("span", {class: "m"}, memberNames)),
+      h("div", {style: "display:flex;gap:8px;align-items:center"}, addSel, leave)),
+    box, h("form", {onsubmit: send, class: "cform"}, inpField.wrap, img, merr, h("button", {}, "Send")));
+  const msgEls = new Map();
+  function renderMsg(d) {
+    const x = d.data();
+    return h("div", {class: "msg"}, avatar(users[x.from], 32),
+      h("div", {class: "mbody"}, h("div", {class: "mhead"}, h("span", {class: "mname"}, x.authorName), h("span", {class: "m"}, when(x.createdAt)),
+          x.from === me.uid && h("button", {class: "q", style: "margin-left:auto", onclick: () => deleteDoc(d.ref)}, "Delete")),
+        x.text && renderText(x.text),
+        x.imageUrl && h("img", {src: safe(x.imageUrl), alt: "", loading: "lazy"})));
+  }
+  listen(query(collection(db, "groups", gid, "messages"), orderBy("createdAt"), limit(200)), s => {
+    syncList(box, s, msgEls, renderMsg, "No messages yet. Say hello.", null);
+    box.scrollTop = box.scrollHeight; });
+}
+</script></body></html>
