@@ -120,7 +120,7 @@ main{padding:24px;max-width:960px;width:100%}
 summary{cursor:pointer;color:var(--acc);font-weight:500}details.card{margin-bottom:12px}details[open] summary{margin-bottom:10px}
 .post p{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .post img{max-width:600px;max-height:600px;object-fit:cover;border-radius:8px;margin:6px 0;display:block}
-#msgs{height:55vh;overflow:auto;display:flex;flex-direction:column;padding:8px 4px;margin-bottom:10px}
+#msgs{height:70vh;overflow:auto;display:flex;flex-direction:column;padding:8px 4px;margin-bottom:10px}
 .msg{display:flex;gap:14px;padding:6px 10px;border-radius:6px}
 .msg:hover{background:var(--panel2)}
 .msg .ava{margin-top:2px}
@@ -133,6 +133,16 @@ summary{cursor:pointer;color:var(--acc);font-weight:500}details.card{margin-bott
 .mbody img{max-width:300px;max-height:300px;object-fit:cover;border-radius:8px;margin-top:4px;display:block}
 .err{color:#f23f42;min-height:1.4em;font-size:13px}
 .empty{color:var(--mute)}
+.vidwrap{width:100%;max-width:var(--vw,480px);margin:6px 0}
+.vid{position:relative;width:100%;aspect-ratio:var(--ar,16/9);border-radius:8px;overflow:hidden;background:#000}
+.vid iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.vid img.thumb{position:absolute;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;border-radius:0;object-fit:cover;opacity:.8}
+.vid button.play{position:absolute;inset:0;width:100%;height:100%;min-height:0;border-radius:0;background:rgba(0,0,0,.35);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#fff;font-size:14px;padding:8px}
+.vid button.play:hover{background:rgba(0,0,0,.2)}
+.vid .tri{width:56px;height:56px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;font-size:22px;padding-left:4px}
+.vlink{display:inline-block;font-size:13px;color:var(--mute);margin-top:4px}
+.vfile{display:block;width:100%;max-width:480px;max-height:420px;border-radius:8px;background:#000;margin:6px 0}
+.hint{margin:-2px 0 8px}
 .mention{background:rgba(88,101,242,.15);color:var(--acc);border-radius:4px;padding:0 2px;font-weight:600}
 .mention-wrap{position:relative;width:100%}
 .mention-menu{position:absolute;left:0;right:0;top:100%;background:var(--panel);border-radius:8px;margin-top:2px;z-index:20;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.3)}
@@ -194,6 +204,63 @@ const h = (t, p = {}, ...k) => { const e = document.createElement(t);
   for (const [a, v] of Object.entries(p)) a.startsWith("on") ? e.addEventListener(a.slice(2), v) : a === "class" ? e.className = v : a in e ? e[a] = v : e.setAttribute(a, v);
   e.append(...k.flat().filter(x => x != null && x !== false)); return e; };
 const safe = u => /^https?:\/\//i.test(u) ? u : "#";
+
+// ---------- Video links ----------
+// A pasted link is NEVER used directly as a player address. We only recognise a few known sites and
+// build the embed address ourselves from the video ID, so look-alike or malicious links just show as a plain link/image.
+const hostIs = (h, d) => h === d || h.endsWith("." + d);
+function parseVideo(link) {
+  let u; try { u = new URL(link); } catch { return null; }
+  if (!/^https?:$/.test(u.protocol)) return null;
+  const h = u.hostname.toLowerCase(), path = u.pathname;
+  const bad = name => ({kind: "error", msg: `Couldn't find a video in that ${name} link. Paste the link to a single video.`});
+  let m;
+  if (hostIs(h, "youtube.com") || h === "youtu.be") {
+    const id = h === "youtu.be" ? path.slice(1).split("/")[0] : path === "/watch" ? u.searchParams.get("v")
+      : (m = path.match(/^\/(?:shorts|embed|live|v)\/([\w-]{11})/)) ? m[1] : "";
+    return /^[\w-]{11}$/.test(id || "") ? {kind: "embed", provider: "YouTube", src: `https://www.youtube-nocookie.com/embed/${id}`,
+      thumb: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`, ratio: "16/9", maxW: 480} : bad("YouTube");
+  }
+  if (h === "vimeo.com" || h === "player.vimeo.com") {
+    m = path.match(/^\/(?:video\/)?(\d{6,12})(?:\/([0-9a-f]{8,}))?/i);
+    return m ? {kind: "embed", provider: "Vimeo", src: `https://player.vimeo.com/video/${m[1]}${m[2] ? "?h=" + m[2] : ""}`, ratio: "16/9", maxW: 480} : bad("Vimeo");
+  }
+  if (hostIs(h, "tiktok.com")) {
+    m = path.match(/\/(?:video|embed\/v2|v)\/(\d{10,25})/);
+    return m ? {kind: "embed", provider: "TikTok", src: `https://www.tiktok.com/embed/v2/${m[1]}`, ratio: "325/739", maxW: 325}
+      : {kind: "error", msg: "Couldn't find a video in that TikTok link. Short links (vm.tiktok.com) don't work: open the video and copy the full link (tiktok.com/@name/video/…)."};
+  }
+  if (hostIs(h, "facebook.com") || h === "fb.watch") {
+    if (h !== "fb.watch" && !/\/(videos|reel|watch|share\/[vr])(\/|$)/.test(path)) return bad("Facebook");
+    const reel = /\/reel\//.test(path);
+    return {kind: "embed", provider: "Facebook", src: `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(u.href)}&show_text=false`,
+      ratio: reel ? "9/16" : "16/9", maxW: reel ? 325 : 480};
+  }
+  if (hostIs(h, "instagram.com")) {
+    m = path.match(/^\/(?:[\w.]+\/)?(p|reel|reels|tv)\/([\w-]+)/);
+    return m ? {kind: "embed", provider: "Instagram", src: `https://www.instagram.com/${m[1] === "reels" ? "reel" : m[1]}/${m[2]}/embed/`, ratio: "4/7", maxW: 400} : bad("Instagram");
+  }
+  if (/\.(mp4|webm|ogv|mov|m4v)$/i.test(path)) return {kind: "file", src: u.href};
+  return null; // anything else is treated as a picture
+}
+// Returns an error message for a bad link, or "" if it's fine to post.
+function mediaError(link) {
+  if (!link) return "";
+  if (!/^https?:\/\//i.test(link)) return "Link must start with http(s)://";
+  const v = parseVideo(link); return v?.kind === "error" ? v.msg : "";
+}
+// A picture, a playable video, or a "Play" preview that loads the real player only when tapped.
+function mediaEl(link, imgProps = {}) {
+  const v = parseVideo(link);
+  if (!v || v.kind === "error") return h("img", {src: safe(link), alt: "", loading: "lazy", ...imgProps});
+  if (v.kind === "file") return h("video", {class: "vfile", src: safe(v.src), controls: true, playsinline: true, preload: "metadata"});
+  const play = () => box.replaceChildren(h("iframe", {src: v.src, title: v.provider + " video", allow: "autoplay; encrypted-media; picture-in-picture; fullscreen",
+    allowfullscreen: "", referrerpolicy: "strict-origin-when-cross-origin"}));
+  const box = h("div", {class: "vid"}, v.thumb && h("img", {class: "thumb", src: v.thumb, alt: "", loading: "lazy", onerror: e => e.target.remove()}),
+    h("button", {type: "button", class: "play", onclick: play}, h("span", {class: "tri"}, "▶"), `Play ${v.provider} video`));
+  return h("div", {class: "vidwrap", style: `--ar:${v.ratio};--vw:${v.maxW}px`}, box,
+    h("a", {class: "vlink", href: safe(link), target: "_blank", rel: "noopener noreferrer"}, `Open on ${v.provider} ↗`));
+}
 const whenShort = t => { if (!t?.toDate) return "sending…"; const d = t.toDate(), n = new Date();
   const time = d.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
   if (d.toDateString() === n.toDateString()) return time;
@@ -429,15 +496,15 @@ function wall(uid, silent) {
   if (mine && !silent) markReadOnce("wall:" + uid, {"reads.comments": serverTimestamp(), "reads.mentions": serverTimestamp()});
   const posts = h("div");
   const txtField = mentionField("textarea", {rows: 2, placeholder: mine ? "Post on your wall (type @ to mention someone)" : `Write on ${u.name}'s wall`});
-  const img = h("input", {placeholder: "Picture link (optional)"});
+  const img = h("input", {placeholder: "Picture or video link (optional)"});
   const perr = h("div", {class: "err"});
   main.replaceChildren(
     h("div", {class: "head"}, h("div", {class: "whoami"}, avatar(u, 40), h("h2", {}, u.name)), !mine && h("button", {onclick: () => chat(uid)}, "Message")),
     mine && profileForm(),
-    h("div", {class: "card"}, txtField.wrap, img, perr, h("button", {onclick: async () => {
+    h("div", {class: "card"}, txtField.wrap, img, h("div", {class: "m hint"}, "Videos work too: YouTube, TikTok, Facebook, Instagram, Vimeo or a direct .mp4 link."), perr, h("button", {onclick: async () => {
       const text = txtField.el.value.trim(), imageUrl = img.value.trim();
       if (!text && !imageUrl) { perr.textContent = "Write something or add a picture link."; return; }
-      if (imageUrl && !/^https?:\/\//i.test(imageUrl)) { perr.textContent = "Picture link must start with http(s)://"; return; }
+      const mediaBad = mediaError(imageUrl); if (mediaBad) { perr.textContent = mediaBad; return; }
       const mentions = resolveMentions(text, txtField.mentions);
       await addDoc(collection(db, "users", uid, "posts"), {text, imageUrl, mentions, authorId: me.uid, authorName: users[me.uid]?.name || me.name, createdAt: serverTimestamp()});
       notifyMentions(mentions, "post", text);
@@ -449,19 +516,19 @@ function wall(uid, silent) {
     const x = d.data(), list = h("div", {class: "comments"}), rbar = h("div", {class: "reactions"});
     const commentEls = new Map();
     const cinpField = mentionField("input", {placeholder: "Comment (@ to mention)", autocomplete: "off"});
-    const cimg = h("input", {placeholder: "Picture link (optional)"});
+    const cimg = h("input", {placeholder: "Picture or video link (optional)"});
     const cerr = h("div", {class: "err"});
     function renderComment(cd) {
       const c = cd.data();
       return h("div", {class: "comment"}, h("span", {class: "m"}, c.authorName + ": "),
         c.text && renderText(c.text, "span"),
-        c.imageUrl && h("img", {src: safe(c.imageUrl), alt: "", loading: "lazy", style: "max-width:200px;max-height:200px;object-fit:cover;border-radius:6px;display:block;margin-top:4px"}),
+        c.imageUrl && mediaEl(c.imageUrl, {style: "max-width:200px;max-height:200px;object-fit:cover;border-radius:6px;display:block;margin-top:4px"}),
         (mine || c.authorId === me.uid) && h("button", {class: "q", onclick: () => deleteDoc(cd.ref)}, "×"));
     }
     const reply = async e => { e.preventDefault();
       const text = cinpField.el.value.trim(), imageUrl = cimg.value.trim();
       if (!text && !imageUrl) { cerr.textContent = "Write something or add a picture link."; return; }
-      if (imageUrl && !/^https?:\/\//i.test(imageUrl)) { cerr.textContent = "Picture link must start with http(s)://"; return; }
+      const mediaBad = mediaError(imageUrl); if (mediaBad) { cerr.textContent = mediaBad; return; }
       const mentions = resolveMentions(text, cinpField.mentions);
       cinpField.reset(); cimg.value = ""; cerr.textContent = "";
       await addDoc(collection(db, "users", uid, "posts", d.id, "comments"),
@@ -481,7 +548,7 @@ function wall(uid, silent) {
     reactionUnsubs.set(d.id, rsub); unsubs.push(rsub);
     return h("div", {class: "card post"},
       h("div", {class: "prow"}, avatar(users[x.authorId], 22), h("span", {class: "m"}, `${x.authorName} · ${when(x.createdAt)}`)),
-      x.imageUrl && h("img", {src: safe(x.imageUrl), alt: "", loading: "lazy"}),
+      x.imageUrl && mediaEl(x.imageUrl),
       x.text && renderText(x.text),
       (mine || x.authorId === me.uid) && h("button", {class: "q", onclick: () => deleteDoc(d.ref)}, "Delete"),
       rbar,
@@ -502,12 +569,12 @@ function chat(uid) {
   const id = [me.uid, uid].sort().join("_"), box = h("div", {id: "msgs"});
   markReadOnce("chat:" + id, {[`reads.chat:${id}`]: serverTimestamp()});
   const inpField = mentionField("input", {placeholder: "Message (@ to mention)", autocomplete: "off"});
-  const img = h("input", {placeholder: "Picture link (optional)"});
+  const img = h("input", {placeholder: "Picture or video link (optional)"});
   const merr = h("div", {class: "err"});
   const send = async e => { e.preventDefault();
     const text = inpField.el.value.trim(), imageUrl = img.value.trim();
     if (!text && !imageUrl) { merr.textContent = "Write something or add a picture link."; return; }
-    if (imageUrl && !/^https?:\/\//i.test(imageUrl)) { merr.textContent = "Picture link must start with http(s)://"; return; }
+    const mediaBad = mediaError(imageUrl); if (mediaBad) { merr.textContent = mediaBad; return; }
     const mentions = resolveMentions(text, inpField.mentions);
     inpField.reset(); img.value = ""; merr.textContent = "";
     await addDoc(collection(db, "chats", id, "messages"), {text, imageUrl, mentions, from: me.uid, createdAt: serverTimestamp()});
@@ -523,7 +590,7 @@ function chat(uid) {
       h("div", {class: "mbody"}, h("div", {class: "mhead"}, h("span", {class: "mname"}, sender.name), h("span", {class: "m", title: when(x.createdAt)}, whenShort(x.createdAt)),
           x.from === me.uid && h("button", {class: "q", style: "margin-left:auto", onclick: () => deleteDoc(d.ref)}, "Delete")),
         x.text && renderText(x.text),
-        x.imageUrl && h("img", {src: safe(x.imageUrl), alt: "", loading: "lazy"})));
+        x.imageUrl && mediaEl(x.imageUrl)));
   }
   listen(query(collection(db, "chats", id, "messages"), orderBy("createdAt"), limit(200)), s => {
     syncList(box, s, msgEls, renderMsg, "No messages yet. Say hello.", null);
@@ -539,12 +606,12 @@ function groupChat(gid) {
   const memberNames = (g.members || []).map(id => users[id]?.name || "…").join(", ");
   const box = h("div", {id: "msgs"});
   const inpField = mentionField("input", {placeholder: "Message group (@ to mention)", autocomplete: "off"});
-  const img = h("input", {placeholder: "Picture link (optional)"});
+  const img = h("input", {placeholder: "Picture or video link (optional)"});
   const merr = h("div", {class: "err"});
   const send = async e => { e.preventDefault();
     const text = inpField.el.value.trim(), imageUrl = img.value.trim();
     if (!text && !imageUrl) { merr.textContent = "Write something or add a picture link."; return; }
-    if (imageUrl && !/^https?:\/\//i.test(imageUrl)) { merr.textContent = "Picture link must start with http(s)://"; return; }
+    const mediaBad = mediaError(imageUrl); if (mediaBad) { merr.textContent = mediaBad; return; }
     const mentions = resolveMentions(text, inpField.mentions);
     inpField.reset(); img.value = ""; merr.textContent = "";
     await addDoc(collection(db, "groups", gid, "messages"), {text, imageUrl, mentions, from: me.uid, authorName: users[me.uid]?.name || me.name, createdAt: serverTimestamp()});
@@ -572,7 +639,7 @@ function groupChat(gid) {
       h("div", {class: "mbody"}, h("div", {class: "mhead"}, h("span", {class: "mname"}, x.authorName), h("span", {class: "m", title: when(x.createdAt)}, whenShort(x.createdAt)),
           x.from === me.uid && h("button", {class: "q", style: "margin-left:auto", onclick: () => deleteDoc(d.ref)}, "Delete")),
         x.text && renderText(x.text),
-        x.imageUrl && h("img", {src: safe(x.imageUrl), alt: "", loading: "lazy"})));
+        x.imageUrl && mediaEl(x.imageUrl)));
   }
   listen(query(collection(db, "groups", gid, "messages"), orderBy("createdAt"), limit(200)), s => {
     syncList(box, s, msgEls, renderMsg, "No messages yet. Say hello.", null);
