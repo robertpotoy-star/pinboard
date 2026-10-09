@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Pinboard</title>
 <!--
 SETUP (5 min):
@@ -60,12 +60,14 @@ service cloud.firestore { match /databases/{db}/documents {
 :root{--bg:#ffffff;--panel:#f2f3f5;--panel2:#e3e5e8;--ink:#060607;--mute:#5c5e66;--acc:#5865f2;--acc-h:#4752c4;--line:#e3e5e8}
 @media(prefers-color-scheme:dark){:root{--bg:#313338;--panel:#2b2d31;--panel2:#1e1f22;--ink:#f2f3f5;--mute:#949ba4;--acc:#5865f2;--acc-h:#4752c4;--line:#1e1f22}}
 *{box-sizing:border-box}
-body{margin:0;font:15px/1.5 -apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font:15px/1.5 -apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);-webkit-tap-highlight-color:transparent}
 h1,h2,h3{font-weight:700;margin:0}
 button,input,select,textarea{font:inherit;color:inherit}
 input,select,textarea{width:100%;padding:10px 12px;border:1px solid transparent;border-radius:8px;background:var(--panel2);margin:0 0 8px}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc)}
-button{cursor:pointer;border:0;border-radius:8px;padding:9px 16px;background:var(--acc);color:#fff;font-weight:500}
+input[type=checkbox]{width:20px;height:20px;padding:0;margin:0;flex:none;accent-color:var(--acc)}
+button{cursor:pointer;border:0;border-radius:8px;padding:9px 16px;background:var(--acc);color:#fff;font-weight:500;touch-action:manipulation}
 button:hover{background:var(--acc-h)}
 button.q{background:transparent;color:var(--acc);padding:4px 8px;font-weight:500;border-radius:4px}
 button.q:hover{background:var(--panel2);color:var(--acc-h)}
@@ -73,11 +75,15 @@ button.q:hover{background:var(--panel2);color:var(--acc-h)}
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-thumb{background:var(--panel2);border-radius:4px}
 ::-webkit-scrollbar-track{background:transparent}
-#auth{max-width:340px;margin:12vh auto;padding:28px;background:var(--panel);border-radius:8px}
+#auth{width:calc(100% - 32px);max-width:340px;margin:12vh auto;padding:28px;background:var(--panel);border-radius:8px}
 #auth h1{margin-bottom:16px;color:var(--acc);letter-spacing:-.02em}
 #app{display:none;min-height:100vh;grid-template-columns:240px 1fr;grid-template-rows:auto 1fr}
 header{grid-column:1/3;display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:var(--panel2);border-bottom:1px solid var(--line)}
 header h1{color:var(--acc);letter-spacing:-.02em;font-size:20px}
+.brand{display:flex;align-items:center;gap:6px;min-width:0}
+#menu{display:none;position:relative;font-size:22px;line-height:1;padding:6px 10px}
+#menu.has-dot::after{content:"";position:absolute;top:4px;right:4px;width:10px;height:10px;border-radius:50%;background:#f23f42;border:2px solid var(--panel2)}
+#scrim{display:none}
 aside{padding:12px;background:var(--panel);overflow:auto}
 .srow{display:flex;align-items:center;gap:2px;margin-bottom:2px}
 .srow button:first-child{flex:1;display:flex;align-items:center;gap:10px;text-align:left;background:none;color:var(--mute);padding:8px 10px;overflow:hidden;border-radius:4px;font-weight:500}
@@ -86,30 +92,43 @@ aside{padding:12px;background:var(--panel);overflow:auto}
 .srow button.on{background:var(--panel2);color:var(--ink)}
 .srow .q{padding:6px 8px;flex:none;border-radius:4px}
 main{padding:24px;max-width:960px;width:100%}
-.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
-.whoami{display:flex;align-items:center;gap:12px}
+.head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px 12px;margin-bottom:16px}
+.whoami{display:flex;align-items:center;gap:12px;min-width:0}
+.whoami h2,.head h2{overflow-wrap:anywhere}
 .ava{border-radius:50%;object-fit:cover;flex:none;display:block}
 .ava.ph{display:flex;align-items:center;justify-content:center;background:var(--acc);color:#fff;font-weight:600}
 .prow{display:flex;align-items:center;gap:8px;margin-bottom:4px}
 .comments{margin-top:8px;padding-left:14px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:4px}
-.comment{font-size:14px}
+.comment{font-size:16px;overflow-wrap:anywhere}
+.head>div{min-width:0}
+.gctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:100%}
+.gctl select{width:auto;max-width:100%;margin:0}
+.head .m{overflow-wrap:anywhere}
 .comment .m{color:var(--mute);font-weight:600}
 .m{color:var(--mute);font-size:13px}
 .cform{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-top:8px}
 .cform input{margin-bottom:0}
+.chatform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:start}
+.chatform .mention-wrap{grid-column:1;grid-row:1}
+.chatform>button{grid-column:2;grid-row:1}
+.chatform>input{grid-column:1/-1;grid-row:2;margin:0}
+.chatform>.err{grid-column:1/-1;grid-row:3}
+.chatform>.err:empty{display:none}
 .dot{position:absolute;top:-2px;right:-2px;width:9px;height:9px;border-radius:50%;background:#f23f42;border:2px solid var(--panel)}
 .dot-inline{display:inline-block;width:8px;height:8px;border-radius:50%;background:#f23f42;flex:none}
 .card{background:var(--panel);border-radius:8px;padding:16px;margin-bottom:12px}
 summary{cursor:pointer;color:var(--acc);font-weight:500}details.card{margin-bottom:12px}details[open] summary{margin-bottom:10px}
 .post p{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .post img{max-width:600px;max-height:600px;object-fit:cover;border-radius:8px;margin:6px 0;display:block}
-#msgs{height:60vh;overflow:auto;display:flex;flex-direction:column;padding:8px 4px;margin-bottom:10px}
+#msgs{height:55vh;overflow:auto;display:flex;flex-direction:column;padding:8px 4px;margin-bottom:10px}
 .msg{display:flex;gap:14px;padding:6px 10px;border-radius:6px}
 .msg:hover{background:var(--panel2)}
 .msg .ava{margin-top:2px}
 .mbody{min-width:0;flex:1}
-.mhead{display:flex;align-items:baseline;gap:8px}
-.mname{font-weight:600;color:var(--ink)}
+.mhead{display:flex;align-items:baseline;flex-wrap:wrap;gap:0 8px}
+.mhead .m{white-space:nowrap}
+.mhead button.q{padding:2px 8px;min-height:28px}
+.mname{font-weight:600;color:var(--ink);min-width:0;overflow-wrap:anywhere}
 .mbody p{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .mbody img{max-width:300px;max-height:300px;object-fit:cover;border-radius:8px;margin-top:4px;display:block}
 .err{color:#f23f42;min-height:1.4em;font-size:13px}
@@ -117,6 +136,7 @@ summary{cursor:pointer;color:var(--acc);font-weight:500}details.card{margin-bott
 .mention{background:rgba(88,101,242,.15);color:var(--acc);border-radius:4px;padding:0 2px;font-weight:600}
 .mention-wrap{position:relative;width:100%}
 .mention-menu{position:absolute;left:0;right:0;top:100%;background:var(--panel);border-radius:8px;margin-top:2px;z-index:20;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+.mention-menu.up{top:auto;bottom:100%;margin:0 0 2px}
 .mention-menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;color:var(--ink);padding:7px 10px;border-radius:0;font-weight:500}
 .mention-menu button:hover{background:var(--panel2)}
 .reactions{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 0}
@@ -126,11 +146,38 @@ summary{cursor:pointer;color:var(--acc);font-weight:500}details.card{margin-bott
 .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
 .modal{background:var(--panel);padding:20px;border-radius:8px;max-width:320px;width:100%;max-height:80vh;overflow:auto}
 .modal h3{margin-bottom:12px}
-@media(max-width:700px){#app{grid-template-columns:1fr;grid-template-rows:auto auto 1fr}header{grid-column:1}aside{display:flex;gap:6px;overflow-x:auto;background:var(--panel);border-bottom:1px solid var(--line)}.srow{flex:none;margin-bottom:0}.srow button:first-child span{max-width:80px}}
+@media(max-width:700px),(hover:none) and (pointer:coarse) and (max-height:500px){
+  body{font-size:16px}
+  input,select,textarea{font-size:16px;padding:11px 12px}
+  button{min-height:42px}
+  button.q{padding:8px 10px}
+  /* app fills exactly the visible screen (JS keeps --app-h/--app-top in sync with the on-screen keyboard) */
+  #app{position:fixed;left:0;right:0;top:var(--app-top,0px);height:var(--app-h,100dvh);min-height:0;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr)}
+  header{grid-column:1;padding:8px max(12px,env(safe-area-inset-right)) 8px max(8px,env(safe-area-inset-left));padding-top:max(8px,env(safe-area-inset-top))}
+  #menu{display:inline-flex;align-items:center;justify-content:center}
+  #out{padding:8px 10px}
+  /* people/groups list becomes a slide-out menu */
+  aside{position:fixed;top:0;left:0;bottom:0;width:min(300px,86vw);z-index:40;transform:translateX(-102%);visibility:hidden;transition:transform .2s ease,visibility 0s .2s;box-shadow:4px 0 24px rgba(0,0,0,.35);padding:max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+  #app.menu-open aside{transform:none;visibility:visible;transition:transform .2s ease}
+  #scrim{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.55)}
+  #app.menu-open #scrim{display:block}
+  .srow button:first-child{padding:12px 10px}
+  .srow .q{padding:10px 12px}
+  main{max-width:none;padding:12px max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column;min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+  main>*{flex:none}
+  .card{padding:12px}
+  /* chat fills the screen; composer stays pinned at the bottom */
+  #msgs{flex:1 1 auto;height:auto;min-height:120px;margin-bottom:8px;padding:4px 0}
+  .msg{gap:10px;padding:6px 4px}
+  .reactions button{padding:6px 12px;min-height:36px}
+  .post img,.mbody img{max-width:min(200px,100%)}
+  .modal-backdrop{align-items:flex-end;padding:0}
+  .modal{max-width:none;border-radius:16px 16px 0 0;max-height:85dvh;padding:20px 16px max(20px,env(safe-area-inset-bottom))}
+}
 </style></head>
 <body>
 <form id="auth"><h1>Pinboard</h1><input id="nm" placeholder="Display name" hidden><input id="em" type="email" placeholder="Email" required><input id="pw" type="password" placeholder="Password (6+ characters)" required minlength="6"><div class="err" id="err"></div><button>Sign in</button> <button type="button" class="q" id="sw">Create an account</button></form>
-<div id="app"><header><h1>Pinboard</h1><button class="q" id="out">Sign out</button></header><aside id="side"></aside><main id="main"></main></div>
+<div id="app"><header><div class="brand"><button class="q" id="menu" aria-label="Open menu" aria-expanded="false">☰</button><h1>Pinboard</h1></div><button class="q" id="out">Sign out</button></header><aside id="side"></aside><main id="main"></main><div id="scrim"></div></div>
 
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -147,6 +194,10 @@ const h = (t, p = {}, ...k) => { const e = document.createElement(t);
   for (const [a, v] of Object.entries(p)) a.startsWith("on") ? e.addEventListener(a.slice(2), v) : a === "class" ? e.className = v : a in e ? e[a] = v : e.setAttribute(a, v);
   e.append(...k.flat().filter(x => x != null && x !== false)); return e; };
 const safe = u => /^https?:\/\//i.test(u) ? u : "#";
+const whenShort = t => { if (!t?.toDate) return "sending…"; const d = t.toDate(), n = new Date();
+  const time = d.toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
+  if (d.toDateString() === n.toDateString()) return time;
+  return d.toLocaleDateString([], d.getFullYear() === n.getFullYear() ? {month: "short", day: "numeric"} : {dateStyle: "medium"}) + ", " + time; };
 const when = t => t?.toDate ? t.toDate().toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "sending…";
 const initials = n => (n || "?").trim().split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
 const avatar = (u, size = 28) => (u?.photoURL && /^https?:\/\//i.test(u.photoURL))
@@ -180,7 +231,8 @@ function mentionField(tag, props) {
       mentions.add(id);
       const newPos = tok.start + insert.length; el.focus(); el.setSelectionRange(newPos, newPos);
       close(); }}, avatar(u, 18), u.name)));
-    menu.style.display = "block";
+    menu.classList.remove("up"); menu.style.display = "block";
+    if (menu.getBoundingClientRect().bottom > (window.visualViewport?.height || innerHeight)) menu.classList.add("up");
   };
   el.addEventListener("input", refresh);
   el.addEventListener("blur", () => setTimeout(close, 150));
@@ -281,6 +333,19 @@ $("auth").onsubmit = async e => { e.preventDefault(); $("err").textContent = "";
   } catch (x) { $("err").textContent = x.code.replace("auth/", "").replaceAll("-", " "); } };
 $("out").onclick = () => signOut(auth);
 
+// ---------- Mobile menu & on-screen keyboard ----------
+const setMenu = open => { $("app").classList.toggle("menu-open", open); $("menu").setAttribute("aria-expanded", open); $("menu").setAttribute("aria-label", open ? "Close menu" : "Open menu"); };
+$("menu").onclick = () => setMenu(!$("app").classList.contains("menu-open"));
+$("scrim").onclick = () => setMenu(false);
+$("side").addEventListener("click", e => { if (e.target.closest("button")) setMenu(false); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") setMenu(false); });
+// Keep the app exactly as tall as the *visible* screen, so the on-screen keyboard never hides the message box.
+if (window.visualViewport) {
+  const fit = () => { const r = document.documentElement.style;
+    r.setProperty("--app-h", visualViewport.height + "px"); r.setProperty("--app-top", visualViewport.offsetTop + "px"); };
+  visualViewport.addEventListener("resize", fit); visualViewport.addEventListener("scroll", fit); fit();
+}
+
 let usersUnsub = null, groupsUnsub = null, chatsUnsub = null, myPostsUnsub = null, mentionsUnsub = null;
 const repaint = () => { if (!curId) return;
   if (curKind === "chat") chat(curId); else if (curKind === "group") groupChat(curId); else wall(curId, true); };
@@ -288,7 +353,7 @@ onAuthStateChanged(auth, u => {
   clear();
   [usersUnsub, groupsUnsub, chatsUnsub, myPostsUnsub, mentionsUnsub].forEach(f => f && f());
   usersUnsub = groupsUnsub = chatsUnsub = myPostsUnsub = mentionsUnsub = null;
-  lastMarkedRead = null; curId = null;
+  lastMarkedRead = null; curId = null; setMenu(false);
   $("auth").style.display = u ? "none" : "block"; $("app").style.display = u ? "grid" : "none";
   if (!u) return;
   me = {uid: u.uid, name: u.displayName || u.email.split("@")[0]};
@@ -307,6 +372,8 @@ onAuthStateChanged(auth, u => {
 // ---------- Sidebar ----------
 let cur = "";
 function side(active = cur) { cur = active;
+  $("menu").classList.toggle("has-dot", hasUnreadComments() || hasUnreadMentions()
+    || Object.keys(users).some(id => id !== me.uid && hasUnreadChat(id)) || Object.keys(groups).some(hasUnreadGroup));
   const groupRows = Object.entries(groups).sort((a, b) => a[1].name.localeCompare(b[1].name)).map(([id, g]) =>
     h("div", {class: "srow"}, h("button", {class: id === active ? "on" : "", onclick: () => groupChat(id)},
       hasUnreadGroup(id) && h("span", {class: "dot-inline"}), "👥 " + g.name)));
@@ -339,7 +406,7 @@ function openNewGroupModal() {
   const others = Object.entries(users).filter(([id]) => id !== me.uid).sort((a, b) => a[1].name.localeCompare(b[1].name));
   const gName = h("input", {placeholder: "Group name"}), gErr = h("div", {class: "err"});
   const checks = others.map(([id, u]) => { const cb = h("input", {type: "checkbox", value: id});
-    return {id, cb, row: h("label", {style: "display:flex;align-items:center;gap:8px;padding:4px 0"}, cb, avatar(u, 20), h("span", {}, u.name))}; });
+    return {id, cb, row: h("label", {style: "display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer"}, cb, avatar(u, 24), h("span", {style: "min-width:0;overflow-wrap:anywhere"}, u.name))}; });
   const backdrop = h("div", {class: "modal-backdrop", onclick: e => { if (e.target === backdrop) backdrop.remove(); }},
     h("div", {class: "modal"}, h("h3", {}, "New group"),
       others.length ? h("div", {}, gName, ...checks.map(c => c.row), gErr,
@@ -362,7 +429,7 @@ function wall(uid, silent) {
   if (mine && !silent) markReadOnce("wall:" + uid, {"reads.comments": serverTimestamp(), "reads.mentions": serverTimestamp()});
   const posts = h("div");
   const txtField = mentionField("textarea", {rows: 2, placeholder: mine ? "Post on your wall (type @ to mention someone)" : `Write on ${u.name}'s wall`});
-  const img = h("input", {placeholder: "Picture link (optional) — paste an image URL"});
+  const img = h("input", {placeholder: "Picture link (optional)"});
   const perr = h("div", {class: "err"});
   main.replaceChildren(
     h("div", {class: "head"}, h("div", {class: "whoami"}, avatar(u, 40), h("h2", {}, u.name)), !mine && h("button", {onclick: () => chat(uid)}, "Message")),
@@ -381,7 +448,7 @@ function wall(uid, silent) {
   function renderPost(d) {
     const x = d.data(), list = h("div", {class: "comments"}), rbar = h("div", {class: "reactions"});
     const commentEls = new Map();
-    const cinpField = mentionField("input", {placeholder: "Write a comment (@ to mention)", autocomplete: "off"});
+    const cinpField = mentionField("input", {placeholder: "Comment (@ to mention)", autocomplete: "off"});
     const cimg = h("input", {placeholder: "Picture link (optional)"});
     const cerr = h("div", {class: "err"});
     function renderComment(cd) {
@@ -434,7 +501,7 @@ function chat(uid) {
   clear(); side(uid);
   const id = [me.uid, uid].sort().join("_"), box = h("div", {id: "msgs"});
   markReadOnce("chat:" + id, {[`reads.chat:${id}`]: serverTimestamp()});
-  const inpField = mentionField("input", {placeholder: "Write a message (@ to mention)", autocomplete: "off"});
+  const inpField = mentionField("input", {placeholder: "Message (@ to mention)", autocomplete: "off"});
   const img = h("input", {placeholder: "Picture link (optional)"});
   const merr = h("div", {class: "err"});
   const send = async e => { e.preventDefault();
@@ -448,12 +515,12 @@ function chat(uid) {
     setDoc(doc(db, "chats", id), {members: [me.uid, uid], lastAt: serverTimestamp(), lastFrom: me.uid}, {merge: true}); };
   main.replaceChildren(
     h("div", {class: "head"}, h("h2", {}, "Chat with " + (users[uid]?.name || "…")), h("button", {class: "q", onclick: () => wall(uid)}, "View wall")),
-    box, h("form", {onsubmit: send, class: "cform"}, inpField.wrap, img, merr, h("button", {}, "Send")));
+    box, h("form", {onsubmit: send, class: "cform chatform"}, inpField.wrap, img, merr, h("button", {}, "Send")));
   const msgEls = new Map();
   function renderMsg(d) {
     const x = d.data(); const sender = users[x.from] || (x.from === me.uid ? {name: me.name} : {name: "…"});
     return h("div", {class: "msg"}, avatar(sender, 32),
-      h("div", {class: "mbody"}, h("div", {class: "mhead"}, h("span", {class: "mname"}, sender.name), h("span", {class: "m"}, when(x.createdAt)),
+      h("div", {class: "mbody"}, h("div", {class: "mhead"}, h("span", {class: "mname"}, sender.name), h("span", {class: "m", title: when(x.createdAt)}, whenShort(x.createdAt)),
           x.from === me.uid && h("button", {class: "q", style: "margin-left:auto", onclick: () => deleteDoc(d.ref)}, "Delete")),
         x.text && renderText(x.text),
         x.imageUrl && h("img", {src: safe(x.imageUrl), alt: "", loading: "lazy"})));
@@ -471,7 +538,7 @@ function groupChat(gid) {
   const g = groups[gid] || {name: "Group", members: []};
   const memberNames = (g.members || []).map(id => users[id]?.name || "…").join(", ");
   const box = h("div", {id: "msgs"});
-  const inpField = mentionField("input", {placeholder: "Message the group (@ to mention)", autocomplete: "off"});
+  const inpField = mentionField("input", {placeholder: "Message group (@ to mention)", autocomplete: "off"});
   const img = h("input", {placeholder: "Picture link (optional)"});
   const merr = h("div", {class: "err"});
   const send = async e => { e.preventDefault();
@@ -483,7 +550,7 @@ function groupChat(gid) {
     await addDoc(collection(db, "groups", gid, "messages"), {text, imageUrl, mentions, from: me.uid, authorName: users[me.uid]?.name || me.name, createdAt: serverTimestamp()});
     notifyMentions(mentions, "group", text);
     updateDoc(doc(db, "groups", gid), {lastAt: serverTimestamp(), lastFrom: me.uid}); };
-  const addSel = h("select", {style: "width:auto"}, h("option", {value: ""}, "+ Add someone"),
+  const addSel = h("select", {}, h("option", {value: ""}, "+ Add someone"),
     ...Object.entries(users).filter(([id]) => !(g.members || []).includes(id)).map(([id, u]) => h("option", {value: id}, u.name)));
   addSel.onchange = async () => { if (!addSel.value) return;
     await updateDoc(doc(db, "groups", gid), {members: arrayUnion(addSel.value)}); addSel.value = ""; };
@@ -496,13 +563,13 @@ function groupChat(gid) {
     nameEl.replaceWith(rnInp); renameBtn.replaceWith(save); rnInp.focus(); }}, "✏️");
   main.replaceChildren(
     h("div", {class: "head"}, h("div", {}, h("div", {style: "display:flex;align-items:center;gap:6px"}, nameEl, renameBtn), h("span", {class: "m"}, memberNames)),
-      h("div", {style: "display:flex;gap:8px;align-items:center"}, addSel, leave)),
-    box, h("form", {onsubmit: send, class: "cform"}, inpField.wrap, img, merr, h("button", {}, "Send")));
+      h("div", {class: "gctl"}, addSel, leave)),
+    box, h("form", {onsubmit: send, class: "cform chatform"}, inpField.wrap, img, merr, h("button", {}, "Send")));
   const msgEls = new Map();
   function renderMsg(d) {
     const x = d.data();
     return h("div", {class: "msg"}, avatar(users[x.from], 32),
-      h("div", {class: "mbody"}, h("div", {class: "mhead"}, h("span", {class: "mname"}, x.authorName), h("span", {class: "m"}, when(x.createdAt)),
+      h("div", {class: "mbody"}, h("div", {class: "mhead"}, h("span", {class: "mname"}, x.authorName), h("span", {class: "m", title: when(x.createdAt)}, whenShort(x.createdAt)),
           x.from === me.uid && h("button", {class: "q", style: "margin-left:auto", onclick: () => deleteDoc(d.ref)}, "Delete")),
         x.text && renderText(x.text),
         x.imageUrl && h("img", {src: safe(x.imageUrl), alt: "", loading: "lazy"})));
